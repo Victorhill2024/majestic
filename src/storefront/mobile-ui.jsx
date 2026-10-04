@@ -50,7 +50,7 @@ export const linkBtn = { flex: "none", background: "none", border: "none", paddi
 export const fieldM = { height: 48, boxSizing: "border-box", width: "100%", fontFamily: "var(--font-sans)", fontSize: 16, padding: "0 14px", border: "1px solid var(--border-hairline)", borderRadius: "var(--radius-md)", background: "var(--surface-card)", color: "var(--text-strong)", outline: "none" };
 
 /** Eyebrow, heading and a "see all" on the right — the head of every rail. */
-export function HeadM({ eyebrow, title, action, onAction, pad = "0 16px 12px" }) {
+export function HeadM({ eyebrow, title, action, onAction, pad = "0 20px 16px" }) {
   return (
     <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, padding: pad }}>
       <div style={{ minWidth: 0 }}>
@@ -133,6 +133,43 @@ export function FreeShipBar({ ctx }) {
   );
 }
 
+// ---- Ratings --------------------------------------------------------------
+
+/**
+ * Five stars filled to `value` (0–5, fractions allowed), the way every big
+ * shop draws a rating. Gold on the purple house colours.
+ */
+export function Stars({ value = 0, size = 13, gap = 1, label = true }) {
+  const pct = Math.max(0, Math.min(100, (Number(value) / 5) * 100));
+  const row = (fill) => (
+    <span style={{ display: "inline-flex", gap }}>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <svg key={i} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ flex: "none" }}>
+          <path d="M12 2.6l2.9 6 6.5.8-4.8 4.5 1.2 6.5L12 17.3l-5.8 3.1 1.2-6.5L2.6 9.4l6.5-.8z" fill={fill} />
+        </svg>
+      ))}
+    </span>
+  );
+  return (
+    <span role={label ? "img" : undefined} aria-label={label ? `Rated ${Number(value).toFixed(1)} out of 5` : undefined} style={{ position: "relative", display: "inline-flex", lineHeight: 0, flex: "none" }}>
+      {row("var(--mr-lavender-300, #d9cfe3)")}
+      <span style={{ position: "absolute", inset: 0, width: `${pct}%`, overflow: "hidden" }}>{row("var(--mr-gold-500, #c9a24e)")}</span>
+    </span>
+  );
+}
+
+/** "★★★★★ 4.8 (23)" — the line under a product's name once it has reviews. */
+export function RatingLine({ rating, size = 12, style = {} }) {
+  if (!rating || !rating.count) return null;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "var(--font-sans)", fontSize: 11.5, color: "var(--text-muted)", ...style }}>
+      <Stars value={rating.avg} size={size} />
+      <span style={{ fontWeight: 600, color: "var(--text-strong)" }}>{rating.avg.toFixed(1)}</span>
+      <span>({rating.count})</span>
+    </span>
+  );
+}
+
 // ---- The product card -----------------------------------------------------
 
 /**
@@ -167,18 +204,22 @@ export function MobileProductCard({ p }) {
           </button>
         )}
       </div>
-      <div style={{ padding: "10px 11px 12px", display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
+      <div style={{ padding: "12px 12px 14px", display: "flex", flexDirection: "column", gap: 5, flex: 1 }}>
         <a href={p.href} onClick={(e) => { e.preventDefault(); v.open(); }} className="mr-clamp2"
           style={{ fontFamily: "var(--font-display)", fontSize: 15, lineHeight: 1.25, color: "var(--text-strong)", minHeight: 37 }}>
           {p.name}
         </a>
         <div style={{ fontSize: 11.5, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.sizeLabel}</div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
-          <span style={{ fontWeight: 600, fontSize: 14.5, color: "var(--mr-purple-900)" }}>{p.rangeLabel || v.priceLabel}</span>
+        <RatingLine rating={p.rating} />
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap", paddingTop: 2 }}>
+          <span style={{ fontWeight: 600, fontSize: 15, color: "var(--mr-purple-900)" }}>{p.rangeLabel || v.priceLabel}</span>
           {!p.rangeLabel && v.compareAtLabel && <span style={{ fontSize: 11.5, color: "var(--text-muted)", textDecoration: "line-through" }}>{v.compareAtLabel}</span>}
         </div>
-        <div style={{ fontSize: 11, lineHeight: 1.35, color: v.availColor }}>{v.availLine}</div>
-        <div style={{ marginTop: "auto", paddingTop: 6 }}>
+        {/* Only when it says something: the grid already shows what is on the
+            shelf in the shopper's city, so "In stock in Abuja" under every
+            card was noise. Low stock, another city, or sold out still show. */}
+        {v.availNote && <div style={{ fontSize: 11, lineHeight: 1.35, color: v.availColor }}>{v.availNote}</div>}
+        <div style={{ marginTop: "auto", paddingTop: 8 }}>
           <BtnM variant="secondary" block onClick={act}>{label}</BtnM>
         </div>
       </div>
@@ -194,9 +235,9 @@ export function MobileProductCard({ p }) {
 export const RailEnd = () => <span aria-hidden="true" style={{ flex: "none", width: 6 }} />;
 
 /** A sideways-scrolling row of cards that snaps to each one. */
-export function Rail({ children, width = 158, gap = 10, pad = "0 16px 4px", bleed = false }) {
+export function Rail({ children, width = 162, gap = 12, pad = "0 20px 4px", bleed = false }) {
   return (
-    <div className="mr-rail" style={{ display: "flex", gap, overflowX: "auto", padding: pad, scrollSnapType: "x mandatory", scrollPaddingLeft: 16, ...(bleed ? { margin: "0 -16px" } : null) }}>
+    <div className="mr-rail" style={{ display: "flex", gap, overflowX: "auto", padding: pad, scrollSnapType: "x mandatory", scrollPaddingLeft: 20, ...(bleed ? { margin: "0 -20px" } : null) }}>
       {React.Children.map(children, (c) => c && (
         <div style={{ flex: "none", width, scrollSnapAlign: "start" }}>{c}</div>
       ))}
@@ -208,7 +249,7 @@ export function Rail({ children, width = 158, gap = 10, pad = "0 16px 4px", blee
 /** Two columns of cards — the listing, the wishlist. Four on a tablet. */
 export function CardGrid({ cards }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(160px, 45%), 1fr))", gap: 10, padding: "12px 12px 0" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(160px, 44%), 1fr))", gap: "16px 12px", padding: "16px 16px 0" }}>
       {cards.map((p) => p && <MobileProductCard key={p.key} p={p} />)}
     </div>
   );
@@ -306,7 +347,7 @@ export function ActionBar({ children, style = {} }) {
     return () => { if (ro) ro.disconnect(); root.style.setProperty("--mr-bar-h", "0px"); };
   }, []);
   return (
-    <div ref={ref} style={{ position: "fixed", left: 0, right: 0, bottom: "var(--mr-tabs-h, 0px)", zIndex: 120, background: "var(--surface-card)", borderTop: "1px solid var(--border-hairline)", boxShadow: "0 -8px 24px -16px rgba(61,35,80,0.3)", padding: "10px 16px", paddingBottom: "calc(10px + var(--mr-bar-safe, 0px))", ...style }}>
+    <div ref={ref} style={{ position: "fixed", left: 0, right: 0, bottom: "var(--mr-tabs-h, 0px)", zIndex: 120, background: "var(--surface-card)", borderTop: "1px solid var(--border-hairline)", boxShadow: "0 -8px 24px -16px rgba(61,35,80,0.3)", padding: "12px 20px", paddingBottom: "calc(12px + var(--mr-bar-safe, 0px))", ...style }}>
       <div style={{ maxWidth: 560, margin: "0 auto" }}>{children}</div>
     </div>
   );

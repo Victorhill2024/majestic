@@ -4,6 +4,7 @@
 // the whole page module to get it.
 import React, { useState } from "react";
 import { Button, ImageSlot } from "../ds/components.jsx";
+import { RatingLine } from "./mobile-ui.jsx";
 
 function AvailBadge({ p }) {
   return (
@@ -92,6 +93,7 @@ export function ProductCard({ p, height = 230 }) {
           {/* A split card already carries the variation in its name. */}
           {p.name} {!multi && !p.split && <span style={{ fontSize: 13, color: "var(--text-muted)", fontFamily: "var(--font-sans)" }}>{v.label}</span>}
         </a>
+        <RatingLine rating={p.rating} size={13} style={{ fontSize: 12 }} />
         {multi && (
           <div style={{ marginTop: 4 }}>
             <VariantChips variants={p.variants} selectedId={v.id} onSelect={setSelId} optionName={p.optionName} />

@@ -6,10 +6,12 @@ import { routeToPath } from "./router.js";
 import { EmbedCard, TestimonialCarousel, PostBody, PostCard } from "./pages-content.jsx";
 import { DailyDealCard } from "./daily-deal.jsx";
 import { countIn } from "../lib/categories.js";
-import { aboutContent } from "../lib/about.js";
+import { aboutContent, STORY_HEADING } from "../lib/about.js";
 import { variantGallery } from "../lib/gallery.js";
 import { fill, cardsFor, shelfCards, blockNav } from "./blocks.js";
 import { useShopList, SHOP_TITLE } from "./shop-list.js";
+import { ProductReviews } from "./reviews.jsx";
+import { RatingLine } from "./mobile-ui.jsx";
 
 export { ProductCard };
 export { WishlistPage, LocationsPage, ReviewsPage, BlogPage, BlogPostPage, PostBody, FaqPage, ConsultationPage } from "./pages-content.jsx";
@@ -414,8 +416,9 @@ function HomeBlock({ block, ctx, vars, runningDeal, perk, iconStyle, categories,
                 style={{ width: "100%", aspectRatio: "3 / 4", position: "relative" }} />
             </div>
             <div>
-              <Eyebrow>{eyebrow}</Eyebrow>
-              <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(24px, 3vw, 34px)", color: "var(--text-strong)", letterSpacing: "var(--ls-heading)", margin: "10px 0 16px", maxWidth: "22ch" }}>{title || about.storyTitle}</h2>
+              {eyebrow && <Eyebrow>{eyebrow}</Eyebrow>}
+              <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(24px, 3vw, 34px)", color: "var(--text-strong)", letterSpacing: "var(--ls-heading)", margin: "10px 0 8px", maxWidth: "22ch" }}>{title || STORY_HEADING}</h2>
+              {about.storyTitle && <div style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: 19, color: "var(--mr-purple-800)", margin: "0 0 14px" }}>{about.storyTitle}</div>}
               <p style={{ fontFamily: "var(--font-editorial)", fontSize: 16, lineHeight: "var(--lh-relaxed)", color: "var(--text-body)", margin: "0 0 8px" }}>{about.story[0]}</p>
               <div style={{ fontSize: 12.5, color: "var(--text-muted)", margin: "0 0 20px" }}>
                 <strong style={{ color: "var(--mr-purple-800)", fontWeight: 600 }}>{about.founderName}</strong> — {about.founderRole}
@@ -660,7 +663,8 @@ export function ShopPage({ ctx }) {
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 28 }}>
         <select value={ctx.fSort} onChange={(e) => ctx.setFSort(e.target.value)} style={selStyle}>
           <option value="featured">{seg ? `Sort — ${segCopy.title.toLowerCase()} first` : `Sort — ${cityName} first`}</option>
-          <option value="best">Best sellers</option>
+          <option value="best">Bestselling</option>
+          <option value="rated">Top rated</option>
           <option value="new">Newest</option>
           <option value="low">Price · low to high</option>
           <option value="high">Price · high to low</option>
@@ -792,6 +796,11 @@ export function ProductPage({ ctx }) {
               {pr.brand} —
             </a>
           )}
+          {pr.rating && pr.rating.count > 0 && (
+            <a href="#reviews" onClick={(e) => { e.preventDefault(); const el = document.getElementById("reviews"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }} style={{ display: "inline-flex", marginBottom: 10 }}>
+              <RatingLine rating={pr.rating} size={16} style={{ fontSize: 13.5 }} />
+            </a>
+          )}
           <div style={{ fontFamily: "var(--font-serif)", fontSize: 18, fontStyle: "italic", color: "var(--text-muted)", marginBottom: 14 }}>{pr.notes}</div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 6 }}>
             <span style={{ fontSize: 24, fontWeight: 600, color: "var(--mr-purple-900)" }}>{ctx.fmt(prV.ngn)}</span>
@@ -864,6 +873,7 @@ export function ProductPage({ ctx }) {
           </div>
         </div>
       </div>
+      <ProductReviews ctx={ctx} product={pr} />
       <RecentlyViewed ctx={ctx} exclude={pr.id} />
       <section style={{ marginTop: "clamp(40px, 6vw, 64px)" }}>
         <Eyebrow>{relatedFromShoppers ? "Often opened together" : "You may also like"}</Eyebrow>

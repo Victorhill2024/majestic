@@ -7,11 +7,12 @@
 
 import { todayInWAT, watToMs, endOfDayWAT } from "./util.js";
 
-export const SEGMENTS = ["new-arrivals", "best-sellers", "gift-sets", "deals"];
+export const SEGMENTS = ["new-arrivals", "best-sellers", "top-rated", "gift-sets", "deals"];
 
 export const SEGMENT_LABELS = {
   "new-arrivals": "New arrivals",
   "best-sellers": "Best sellers",
+  "top-rated": "Top rated",
   "gift-sets": "Gift sets",
   deals: "Deals",
 };
@@ -59,12 +60,14 @@ export function daysBefore(days, today = todayInWAT()) {
  * @param sales     [{ productId, units }] over the best-seller window
  * @param categories[{ id, grp }] — 'gift' is what makes a category a set
  * @param dealProductIds ids named by the deals that are running right now
+ * @param ratings   { productId: { avg, count } } from buyers' published reviews
  */
 export function computeSegments({
   products = [],
   sales = [],
   categories = [],
   dealProductIds = [],
+  ratings = {},
   today = todayInWAT(),
   newArrivalDays = NEW_ARRIVAL_DAYS,
   minShelf = MIN_SHELF,
@@ -109,12 +112,45 @@ export function computeSegments({
   return {
     "new-arrivals": topUp(newArrivals),
     "best-sellers": topUp(bestSellers),
+    // Rated by buyers, best first. Never padded: a product nobody has rated
+    // under a "Top rated" heading would be a claim the shop can't stand behind.
+    "top-rated": topRated(products, ratings),
     // These two are what they are: an empty gift shelf means the house sells no
     // sets, and an empty deal shelf means nothing is marked down today. Padding
     // either with full-price staples would be a lie.
     "gift-sets": giftSets,
     deals,
   };
+}
+
+/**
+ * The "Top rated" shelf: products ranked by a damped average, so one five-star
+ * review doesn't outrank forty reviews averaging 4.8.
+ *
+ * score = (prior·mean + sum) / (prior + count) — each product starts as if it
+ * already had `prior` reviews at the shop's overall average, and its own
+ * reviews pull it away from there. Ties go to the product with more reviews,
+ * then to the house's own catalogue order.
+ *
+ * A claim, not a selection: a product nobody has rated is never on it, and it
+ * is never topped up (see CLAIM_SEGMENTS in worker/home.js).
+ */
+export function topRated(products = [], ratings = {}, { prior = 3, minCount = 1, minAvg = 3.5 } = {}) {
+  const rated = products.filter((p) => ratings[p.id] && ratings[p.id].count >= minCount);
+  if (!rated.length) return [];
+  let sum = 0;
+  let count = 0;
+  for (const p of rated) { sum += ratings[p.id].avg * ratings[p.id].count; count += ratings[p.id].count; }
+  const mean = sum / count;
+  const rank = new Map(products.map((p, i) => [p.id, i]));
+  const score = (id) => {
+    const r = ratings[id];
+    return (prior * mean + r.avg * r.count) / (prior + r.count);
+  };
+  return rated
+    .filter((p) => ratings[p.id].avg >= minAvg)
+    .sort((a, b) => score(b.id) - score(a.id) || ratings[b.id].count - ratings[a.id].count || rank.get(a.id) - rank.get(b.id))
+    .map((p) => p.id);
 }
 
 // ---- The daily deal -------------------------------------------------------

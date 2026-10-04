@@ -61,7 +61,7 @@ export const SOURCES = ["segment", "category", "collection", "in-city", "manual"
  * reason; it is drawn again here because a block can point at a segment the
  * home page never used to show.
  */
-export const CLAIM_SEGMENTS = new Set(["deals", "gift-sets"]);
+export const CLAIM_SEGMENTS = new Set(["deals", "gift-sets", "top-rated"]);
 
 /**
  * Resolve one block to an ordered list of product ids.

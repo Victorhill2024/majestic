@@ -30,7 +30,8 @@ function useSearchRecord(term, found) {
 // search all compose, so "gift sets in body mists" is one address.
 export const SEGMENT_COPY = {
   "new-arrivals": { eyebrow: "New in", title: "New arrivals", sub: "The newest products in the store, newest first." },
-  "best-sellers": { eyebrow: "Best sellers", title: "Best sellers", sub: "The products our customers keep coming back for." },
+  "best-sellers": { eyebrow: "Most shopped", title: "Best sellers", sub: "What our customers buy most, ranked by real orders." },
+  "top-rated": { eyebrow: "Five-star favourites", title: "Top rated", sub: "Rated highest by verified buyers, after every delivery." },
   deals: { eyebrow: "On sale now", title: "Deals" },
   "gift-sets": { eyebrow: "Ready to give", title: "Gift sets", sub: "Fragrance, mist and custom-oil sets, boxed and ready to give." },
 };
@@ -132,6 +133,9 @@ export function useShopList(ctx, { mobile = false } = {}) {
   useSearchRecord(ctx.search, list.length);
   if (ctx.fSort === "new") list = list.slice().sort(rankBy("new-arrivals"));
   else if (ctx.fSort === "best") list = list.slice().sort(rankBy("best-sellers"));
+  // Top rated: the same ranking the Top rated shelf uses (worker/merch.js), so
+  // products nobody has reviewed yet keep their place after the rated ones.
+  else if (ctx.fSort === "rated") list = list.slice().sort(rankBy("top-rated"));
   else if (ctx.fSort === "low") list = list.slice().sort((a, b) => priceOf(a) - priceOf(b));
   else if (ctx.fSort === "high") list = list.slice().sort((a, b) => priceOf(b) - priceOf(a));
   else if (ctx.fSort === "name") list = list.slice().sort((a, b) => a.product.name.localeCompare(b.product.name));

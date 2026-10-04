@@ -158,6 +158,11 @@ export function headFor({ page, product, variant, settings, categories = [], seg
         brand: { "@type": "Brand", name: siteName },
         ...(images.length ? { image: images } : product.imageUrl ? { image: product.imageUrl } : {}),
         ...(sel && sel.sku ? { sku: sel.sku } : {}),
+        // Stars in search results, from verified buyers' reviews — only once
+        // there is at least one, and only the published ones.
+        ...(product.rating && product.rating.count ? {
+          aggregateRating: { "@type": "AggregateRating", ratingValue: Number(product.rating.avg.toFixed(2)), reviewCount: product.rating.count, bestRating: 5, worstRating: 1 },
+        } : {}),
         // A single variation stays a plain Offer; a range becomes an
         // AggregateOffer so search shows the true low/high span.
         offers: offers.length > 1
@@ -179,7 +184,8 @@ export function headFor({ page, product, variant, settings, categories = [], seg
   // than inheriting "Shop all".
   const SEGMENT_HEADS = {
     "new-arrivals": { title: `New Arrivals | ${siteName}`, path: "/new-arrivals", desc: `The newest perfumes, oils, mists and sets at Majestic Roobee. ${baseDesc}` },
-    "best-sellers": { title: `Best Sellers | ${siteName}`, path: "/best-sellers", desc: `The fragrances our customers keep coming back for. ${baseDesc}` },
+    "best-sellers": { title: `Bestselling Perfumes | ${siteName}`, path: "/best-sellers", desc: `Our most-shopped perfumes, oils and mists, ranked by real orders. ${baseDesc}` },
+    "top-rated": { title: `Top Rated Perfumes | ${siteName}`, path: "/top-rated", desc: `The fragrances verified buyers rate highest. ${baseDesc}` },
     deals: { title: `Deals & Offers | ${siteName}`, path: "/deals", desc: `Everything on sale at Majestic Roobee right now. ${baseDesc}` },
     "gift-sets": { title: `Gift Sets | ${siteName}`, path: "/gift-sets", desc: `Fragrance, mist and custom-oil sets, ready to give. ${baseDesc}` },
   };
@@ -288,6 +294,7 @@ export function headFor({ page, product, variant, settings, categories = [], seg
     cart: { title: `Your Cart | ${siteName}`, path: "/cart", desc: "", noindex: true },
     checkout: { title: `Checkout | ${siteName}`, path: "/checkout", desc: "", noindex: true },
     confirm: { title: `Order Confirmed | ${siteName}`, path: "/confirm", desc: "", noindex: true },
+    review: { title: `Rate your order | ${siteName}`, path: "/", desc: "", noindex: true },
   }[page] || { title: siteName, path: "/", desc: baseDesc };
 
   return {

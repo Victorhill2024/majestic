@@ -12,6 +12,8 @@ import { previewOf, plain, readingMinutes } from "../src/lib/blog.js";
 import { emitEvent } from "./events.js";
 import { paystackEnabled, initializePayment, verifyPayment, handleWebhook, resumePayment } from "./payments.js";
 import { getReward, rewardRefusal, computeRewardDiscount, claimReward, releaseReward, freeItemName } from "./rewards.js";
+import { loadRatings, loadRequest, saveReviews, reviewOut, distribution, REVIEW_TAGS, tokenLooksValid } from "./reviews.js";
+import { clientIp, checkThrottle, recordFailure } from "./ratelimit.js";
 
 export const shop = new Hono();
 
@@ -90,6 +92,10 @@ shop.get("/store", async (c) => {
     parentId: x.parent_id || null,
   }));
   const { products, dailyDeal } = await storeCatalogue(db, { settings });
+  // Stars from buyers' reviews, on the product itself, so a card, a product
+  // page and the search-result markup all read one number.
+  const ratings = await loadRatings(db);
+  for (const p of products) if (ratings[p.id]) p.rating = ratings[p.id];
   // "Only 2 left in Abuja" reads off the *same* line the house set in Settings
   // — per store, because the stock is per store, and honouring any override on
   // the variation. Switched off, the lines are simply not published: there is no
@@ -130,6 +136,7 @@ shop.get("/store", async (c) => {
     sales: await bestSellerUnits(db, settings),
     categories,
     dealProductIds: deals.flatMap((d) => d.productIds),
+    ratings,
     today,
     newArrivalDays: settings.newArrivalDays || NEW_ARRIVAL_DAYS,
   });
@@ -170,6 +177,68 @@ shop.get("/store", async (c) => {
   ).all()).results.map((r) => ({ slug: r.slug, title: r.title }));
 
   return c.json({ settings, locations, categories, collections, products, popup, pay, deals, dailyDeal, segments, brands, testimonials, blog, pages, homeBlocks, alsoViewed });
+});
+
+// ---- Ratings & reviews ----------------------------------------------------
+//
+// See worker/reviews.js for the whole flow. These are the three public doors:
+// a product's published reviews, and the review page's read and write — which
+// need nothing but the token from the buyer's email.
+
+shop.get("/products/:id/reviews", async (c) => {
+  const db = c.env.DB;
+  const id = c.req.param("id");
+  const offset = Math.max(0, parseInt(c.req.query("offset"), 10) || 0);
+  const limit = 10;
+  let all = [];
+  try {
+    all = (await db.prepare(
+      `SELECT r.*, i.size AS size FROM product_reviews r
+         LEFT JOIN order_items i ON i.order_no = r.order_no AND i.product_id = r.product_id
+        WHERE r.product_id = ? AND r.status = 'published'
+        GROUP BY r.id
+        ORDER BY (length(r.body) > 0) DESC, r.created_at DESC`
+    ).bind(id).all()).results;
+  } catch { /* no reviews table yet */ }
+  const count = all.length;
+  const avg = count ? Math.round((all.reduce((n, r) => n + r.rating, 0) / count) * 10) / 10 : 0;
+  // Which quick words buyers chose most, as the chips above the list.
+  const tagCounts = {};
+  for (const r of all) for (const t of String(r.tags || "").split(",").filter(Boolean)) tagCounts[t] = (tagCounts[t] || 0) + 1;
+  const topTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([tag, n]) => ({ tag, n }));
+  return c.json({
+    summary: { avg, count, dist: distribution(all), topTags },
+    reviews: all.slice(offset, offset + limit).map(reviewOut),
+    more: offset + limit < count,
+  });
+});
+
+shop.get("/reviews/request/:token", async (c) => {
+  const token = c.req.param("token");
+  if (!tokenLooksValid(token)) return c.json({ error: "This review link isn't valid." }, 404);
+  const loaded = await loadRequest(c.env.DB, token);
+  if (!loaded) return c.json({ error: "This review link has expired or isn't valid." }, 404);
+  await c.env.DB.prepare("UPDATE review_requests SET opened_at = COALESCE(opened_at, datetime('now')) WHERE token = ?").bind(token).run();
+  return c.json({ firstName: loaded.firstName, orderNo: loaded.req.order_no, items: loaded.items, tags: REVIEW_TAGS, done: !!loaded.req.completed_at });
+});
+
+shop.post("/reviews/request/:token", async (c) => {
+  const db = c.env.DB;
+  const token = c.req.param("token");
+  // A guessed token is the only way to abuse this, and a token is 32 random
+  // characters — but a client hammering bad ones is still slowed down.
+  const buckets = [`review:${clientIp(c.req)}`];
+  const gate = await checkThrottle(db, buckets);
+  if (!gate.ok) return c.json({ error: "Too many attempts. Try again in a few minutes." }, 429);
+  const loaded = tokenLooksValid(token) ? await loadRequest(db, token) : null;
+  if (!loaded) {
+    await recordFailure(db, buckets);
+    return c.json({ error: "This review link has expired or isn't valid." }, 404);
+  }
+  const body = await c.req.json().catch(() => ({}));
+  const saved = await saveReviews(db, loaded, body.reviews);
+  if (!saved) return c.json({ error: "Tap at least one star rating to send your review." }, 400);
+  return c.json({ ok: true, saved });
 });
 
 // Units sold per product over the best-seller window. Only orders that were

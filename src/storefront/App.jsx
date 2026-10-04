@@ -9,6 +9,7 @@ import {
 } from "./pages.jsx";
 import { CategoriesPage, CartPage, MobileHome, MobileShop, MobileProduct, MobileCheckout, MobileWishlist } from "./mobile-pages.jsx";
 import { AccountPage } from "./account.jsx";
+import { ReviewPage } from "./reviews.jsx";
 import { pathToRoute, routeToPath } from "./router.js";
 import { consultationContent } from "../lib/consultation.js";
 import { headFor, setHead, setGscVerification } from "./seo.js";
@@ -87,6 +88,8 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem("mr-wishlist") || "[]"); } catch { return []; }
   });
   const [postSlug, setPostSlug] = useState(initialRoute.postSlug || null);
+  // The key from a review-request email (/review/<token>).
+  const [reviewToken, setReviewToken] = useState(initialRoute.reviewToken || null);
   // Privacy, terms, returns — whatever the house has written. Fetched by name,
   // because the list lives on the server and this component is built before any
   // of it has arrived.
@@ -110,7 +113,31 @@ export default function App() {
   // The phone's sheets — menu, search, city, "choose a size", "added to your
   // cart", chat — are one at a time, so one piece of state says which is up.
   // `{ kind, ...data }` or null.
-  const [sheet, setSheet] = useState(null);
+  const [sheet, setSheetRaw] = useState(null);
+  // A sheet is a history entry on a phone, so the back gesture closes it rather
+  // than leaving the page under it — the search sheet covers the whole screen,
+  // and a shopper who swipes back out of it expects to land where they were,
+  // not on the page before. Opening pushes one entry (same address, marked
+  // `sheet`); closing pops it; navigating from inside a sheet replaces it, so
+  // the trail never gains a dead step. Swapping one sheet for another (size →
+  // "added to your cart") reuses the entry already there.
+  const sheetUrl = useRef("");
+  const sheetNow = useRef(null);
+  sheetNow.current = sheet;
+  const setSheet = useCallback((next) => {
+    const st = window.history.state || {};
+    if (next) {
+      if (isMobileRef.current && !st.sheet) {
+        sheetUrl.current = window.location.href;
+        window.history.pushState({ ...st, idx: (st.idx || 0) + 1, sheet: true }, "", window.location.href);
+      }
+      setSheetRaw(next);
+      return;
+    }
+    if (st.sheet && window.location.href === sheetUrl.current) { window.history.back(); return; }
+    sheetUrl.current = "";
+    setSheetRaw(null);
+  }, []);
   // A one-line note at the foot of the screen ("Link copied").
   const [note, setNote] = useState("");
   const noteTimer = useRef(null);
@@ -183,6 +210,31 @@ export default function App() {
     return () => clearTimeout(t);
   }, [D, cart.length]);
 
+  // "Where should we deliver?" — once a visit, on a phone, as a sheet over
+  // whatever page the shopper landed on. It replaced the delivery chips that
+  // sat under the header of every page: the city is a choice made once, not a
+  // control that needs a permanent row. A returning shopper meets it with their
+  // last city already chosen, so it is one tap to carry on. Never over the
+  // pages where a shopper is mid-task (checkout, a receipt, a review they were
+  // emailed to write), nor on a cart-recovery or payment-return link.
+  useEffect(() => {
+    if (!D || !isMobile || (D.locations || []).length < 2) return;
+    if (["checkout", "confirm", "review"].includes(page)) return;
+    const q = new URLSearchParams(window.location.search);
+    if (q.has("recover") || q.has("psorder") || q.has("reset")) return;
+    try { if (sessionStorage.getItem("mr-loc-asked")) return; } catch { return; }
+    // Not over a sheet the shopper has already opened themselves. The visit
+    // only counts as asked once the sheet has actually gone up.
+    const t = setTimeout(() => {
+      if (sheetNow.current) return;
+      try { sessionStorage.setItem("mr-loc-asked", "1"); } catch { /* asked anyway */ }
+      setSheet({ kind: "city", welcome: true });
+    }, 700);
+    return () => clearTimeout(t);
+    // Once per visit, decided when the catalogue first lands.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [D]);
+
   // How many visits this browser has made. Counted once a visit, in the
   // browser's own storage — it is what the pop-up targeting reads, and it never
   // leaves the page.
@@ -236,7 +288,7 @@ export default function App() {
     setPage(p);
     setMnav(false);
     setCartOpen(false);
-    setSheet(null);
+    setSheetRaw(null);
     // A category and a collection are two ways of narrowing the same grid, so
     // naming one clears the other. The order matters: `fCol: null` means "no
     // collection", and reading it as "a collection was chosen" is what used to
@@ -252,6 +304,7 @@ export default function App() {
       if (extra.fSeg !== undefined && extra.fCat === undefined) setFCat("all");
     }
     if (extra.postSlug !== undefined) setPostSlug(extra.postSlug);
+    if (extra.reviewToken !== undefined) setReviewToken(extra.reviewToken);
     if (extra.pageSlug !== undefined) setPageSlug(extra.pageSlug);
     if (extra.productId !== undefined) {
       setProductId(extra.productId);
@@ -259,11 +312,21 @@ export default function App() {
       setPrSku(extra.prSku ?? null);
       setPrQty(1);
     }
-    if (opts.replace) {
-      window.history.replaceState(window.history.state, "", routeToPath(p, extra));
+    const cur = window.history.state || {};
+    if (opts.replace && !cur.sheet) {
+      window.history.replaceState(cur, "", routeToPath(p, extra));
       return;
     }
-    const idx = ((window.history.state && window.history.state.idx) || 0) + 1;
+    // Leaving through a sheet: the sheet's entry becomes the new page's.
+    if (cur.sheet) {
+      sheetUrl.current = "";
+      const at = cur.idx || 0;
+      window.history.replaceState({ idx: at }, "", routeToPath(p, extra));
+      setHistIdx(at);
+      if (!opts.replace) window.scrollTo(0, 0);
+      return;
+    }
+    const idx = (cur.idx || 0) + 1;
     window.history.pushState({ idx }, "", routeToPath(p, extra));
     setHistIdx(idx);
     window.scrollTo(0, 0);
@@ -273,7 +336,10 @@ export default function App() {
   useEffect(() => {
     const onPop = (e) => {
       setHistIdx((e.state && e.state.idx) || 0);
-      setSheet(null);
+      setSheetRaw(null);
+      // Backing out of a sheet lands on the same address: close it and leave
+      // the page — its scroll, its filters — exactly as it was.
+      if (sheetUrl.current && window.location.href === sheetUrl.current) { sheetUrl.current = ""; return; }
       const r = pathToRoute();
       setPage(r.page);
       setProductId(r.productId || null);
@@ -283,6 +349,7 @@ export default function App() {
       setFSeg(r.fSeg || null);
       setFBrand(r.fBrand || "");
       setPostSlug(r.postSlug || null);
+      setReviewToken(r.reviewToken || null);
       setPageSlug(r.pageSlug || null);
       setMnav(false);
       setCartOpen(false);
@@ -457,7 +524,7 @@ export default function App() {
     const p = D0 && D0.products.find((x) => x.id === productId);
     if (p) trackEvent("add_to_cart", { id: variant.sku || productId, name: `${p.name} ${variant.size}`.trim(), value: variant.ngn * qty, items: [{ id: variant.sku || productId, name: p.name, price: variant.ngn, qty }] });
     mrRecord("add_to_cart", { productId, variantId: variant.id, value: variant.ngn * qty });
-  }, []);
+  }, [setSheet]);
 
   // One entry per card in the grid. A product normally contributes a single
   // entry carrying all of its variations (one card, a picker on it); a product
@@ -509,6 +576,8 @@ export default function App() {
       sizeLabel: e.split || variants.length === 1 ? def.size : `${variants.length} sizes`,
       offPct: def.compareAtNgn && def.compareAtNgn > def.ngn ? Math.round((1 - def.ngn / def.compareAtNgn) * 100) : 0,
       isNew: (segments["new-arrivals"] || []).includes(p.id),
+      // { avg, count } from verified buyers' reviews, or null before any.
+      rating: p.rating && p.rating.count ? p.rating : null,
       chooseSize: variants.length > 1 ? chooseSize : null,
       open: () => nav("product", { productId: p.id, prSku: def.sku, prVariantId: def.id }),
       variants: variants.map((v) => {
@@ -527,13 +596,16 @@ export default function App() {
             ? (scarce !== null ? `Only ${scarce} left in ${cityName}` : `In stock in ${cityName}`)
             : alt ? `Ships from ${alt.city} · 3–5 days` : "Out of stock",
           availColor: a.inCity ? (scarce !== null ? "var(--mr-orchid-600)" : "#3f6b45") : "var(--text-muted)",
+          // The same line, but only when it is news — a card in the shopper's
+          // own city that has plenty says nothing rather than "In stock".
+          availNote: a.inCity && scarce === null ? "" : (a.inCity ? `Only ${scarce} left in ${cityName}` : alt ? `Ships from ${alt.city} · 3–5 days` : "Out of stock"),
           addLabel: a.soldOut ? "Notify me" : "Add to cart",
           open: () => nav("product", { productId: p.id, prSku: v.sku, prVariantId: v.id }),
           add: () => (a.soldOut ? joinWaitlist(p.id, v) : addToCart(p.id, v, 1)),
         };
       }),
     };
-  }, [variantAvail, defaultVariant, catLabel, fmt, nav, addToCart, wishlist, toggleWishlist, joinWaitlist, scarcity, bestAlt, cityName, segments]);
+  }, [variantAvail, defaultVariant, catLabel, fmt, nav, addToCart, wishlist, toggleWishlist, joinWaitlist, scarcity, bestAlt, cityName, segments, setSheet]);
 
   // Cart derivation (subtotal, shipping, discount, routing)
   const cc = useMemo(() => {
@@ -997,6 +1069,7 @@ export default function App() {
     collections, segments, deals, dailyDeal, brands, testimonials, latestPosts, refreshStore,
     search, setSearch, fCat, setFCat, fCol, setFCol, fScope, setFScope, fSort, setFSort,
     fSeg, setFSeg, fBrand, setFBrand,
+    reviewToken,
     blog, blogTag, setBlogTag, post, postSlug, pageSlug, infoPage, pages: D ? (D.pages || []) : [],
     // The Perfume Studio's consultation page, resolved once here so the page,
     // the floating button and the footer all read one answer to "is the studio
@@ -1066,6 +1139,7 @@ export default function App() {
     page === "blog" ? <BlogPage ctx={ctx} /> :
     page === "post" ? <BlogPostPage ctx={ctx} /> :
     page === "consultation" ? <ConsultationPage ctx={ctx} /> :
+    page === "review" ? <ReviewPage ctx={ctx} /> :
     isMobile ? <MobileHome ctx={ctx} /> : <HomePage ctx={ctx} />;
 
   // A phone gets its own chrome — tab bar, sheets, pinned actions — around the

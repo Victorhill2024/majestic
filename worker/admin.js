@@ -19,6 +19,7 @@ import { clamp as clampText, PREVIEW_MAX, TITLE_MAX } from "../src/lib/blog.js";
 import { erpStatus, erpPing, erpProbe, erpReadSpec, erpPull, erpSyncWarehouses, erpSyncItemGroups } from "./erp.js";
 import { webhookStatus } from "./erp-webhook.js";
 import { emailConfig, sendEmail } from "./email.js";
+import { onOrderStatus, reviewOut, siteAddress } from "./reviews.js";
 
 const randHex = (n = 24) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, "0")).join("");
 
@@ -992,6 +993,9 @@ admin.patch("/orders/:no", async (c) => {
   }
   const o = await db.prepare("SELECT customer, email, phone FROM orders WHERE no=?").bind(no).first();
   await emitEvent(c.env, "order_status_changed", { entity: no, payload: { orderNo: no, status, name: o ? o.customer : "", email: o ? o.email : "", phone: o ? o.phone : "", contact: o ? (o.email || o.phone) : "" }, ctx: c.executionCtx });
+  // Delivered or collected: the buyer will be asked for their stars a few
+  // days from now (worker/reviews.js).
+  try { await onOrderStatus(c.env, no, status); } catch (e) { console.error("review request not scheduled", e); }
   return c.json({ ok: true });
 });
 
@@ -1823,7 +1827,7 @@ async function freePageSlug(db, want) {
 const RESERVED_SLUGS = new Set([
   "shop", "product", "blog", "about", "faq", "track", "contact", "cart", "checkout", "confirm",
   "account", "wishlist", "locations", "reviews", "consultation", "brand", "brands", "admin", "api", "images",
-  "new-arrivals", "best-sellers", "deals", "gift-sets", "robots.txt", "sitemap.xml",
+  "new-arrivals", "best-sellers", "top-rated", "review", "deals", "gift-sets", "robots.txt", "sitemap.xml",
 ]);
 
 admin.get("/pages", async (c) => {
@@ -1971,6 +1975,60 @@ admin.patch("/blog/:id", async (c) => {
 
 admin.delete("/blog/:id", async (c) => {
   await c.env.DB.prepare("DELETE FROM blog_posts WHERE id=?").bind(parseInt(c.req.param("id"), 10)).run();
+  return c.json({ ok: true });
+});
+
+// ---- Product reviews (buyers' stars) ----
+//
+// Written by buyers from the link in their review-request email (see
+// worker/reviews.js). The house can hide a review that is abusive or not about
+// the product, and reply in public — never change what the buyer wrote or the
+// stars they gave.
+
+admin.get("/product-reviews", async (c) => {
+  const db = c.env.DB;
+  const status = c.req.query("status") || "all";
+  const where = status === "all" ? "" : "WHERE r.status = ?";
+  const stmt = db.prepare(
+    `SELECT r.*, p.name AS product_name FROM product_reviews r LEFT JOIN products p ON p.id = r.product_id
+      ${where} ORDER BY r.created_at DESC LIMIT 300`
+  );
+  const rows = (await (status === "all" ? stmt : stmt.bind(status)).all()).results;
+  const totals = await db.prepare(
+    "SELECT COUNT(*) AS n, AVG(rating) AS avg, SUM(CASE WHEN status='hidden' THEN 1 ELSE 0 END) AS hidden FROM product_reviews"
+  ).first();
+  const funnel = await db.prepare(
+    `SELECT COUNT(*) AS scheduled,
+            SUM(CASE WHEN sent_at IS NOT NULL THEN 1 ELSE 0 END) AS sent,
+            SUM(CASE WHEN opened_at IS NOT NULL THEN 1 ELSE 0 END) AS opened,
+            SUM(CASE WHEN completed_at IS NOT NULL THEN 1 ELSE 0 END) AS completed
+       FROM review_requests`
+  ).first();
+  const auto = await db.prepare("SELECT enabled, delay_minutes FROM automations WHERE id='review_request'").first();
+  return c.json({
+    reviews: rows.map((r) => ({ ...reviewOut(r), productId: r.product_id, productName: r.product_name || r.product_id, orderNo: r.order_no, status: r.status })),
+    totals: { count: totals.n || 0, avg: totals.avg ? Math.round(totals.avg * 10) / 10 : 0, hidden: totals.hidden || 0 },
+    funnel: { scheduled: funnel.scheduled || 0, sent: funnel.sent || 0, opened: funnel.opened || 0, completed: funnel.completed || 0 },
+    automation: auto ? { enabled: !!auto.enabled, delayDays: Math.round((auto.delay_minutes || 0) / 1440 * 10) / 10 } : null,
+    // Requests can't link anywhere until the shop knows its own address.
+    siteUrlMissing: !siteAddress(await getSettings(db), c.env),
+  });
+});
+
+admin.patch("/product-reviews/:id", async (c) => {
+  const db = c.env.DB;
+  const id = parseInt(c.req.param("id"), 10);
+  const body = await c.req.json().catch(() => ({}));
+  if (!(await db.prepare("SELECT id FROM product_reviews WHERE id=?").bind(id).first())) return c.json({ error: "No such review." }, 404);
+  const sets = [];
+  const vals = [];
+  if (body.status !== undefined) {
+    if (!["published", "hidden"].includes(body.status)) return c.json({ error: "A review is either published or hidden." }, 400);
+    sets.push("status=?"); vals.push(body.status);
+  }
+  if (body.reply !== undefined) { sets.push("reply=?"); vals.push(String(body.reply || "").trim().slice(0, 600)); }
+  if (!sets.length) return c.json({ error: "Nothing to change." }, 400);
+  await db.prepare(`UPDATE product_reviews SET ${sets.join(", ")} WHERE id=?`).bind(...vals, id).run();
   return c.json({ ok: true });
 });
 
