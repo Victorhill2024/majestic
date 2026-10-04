@@ -6,6 +6,7 @@
 
 import { getSettings } from "./util.js";
 import { sendEmail } from "./email.js";
+import { runReviewRequests } from "./reviews.js";
 
 const te = new TextEncoder();
 
@@ -57,6 +58,9 @@ function renderRun(automation, payload) {
   // the cart is back, rather than the home page and a second search for the
   // thing they had already chosen.
   if (payload.recoverUrl) body += `\n\nPick up where you left off: ${payload.recoverUrl}`;
+  // The review request's whole point: one tap to the page with the stars.
+  // A label and a link on their own line become the email's button.
+  if (payload.reviewUrl) body += `\n\nRate your order: ${payload.reviewUrl}`;
   return { recipient, subject, body };
 }
 
@@ -161,6 +165,16 @@ export async function runScheduled(env) {
       await env.DB.prepare("UPDATE abandoned_checkouts SET reminded=1 WHERE id=?").bind(c.id).run();
     }
   }
+
+  // Review requests — a few days after an order arrives (worker/reviews.js).
+  // Enqueued before the drain below, so a request that falls due on this run
+  // also goes out on it.
+  try {
+    await runReviewRequests(env, async (automation, payload) => {
+      const eventId = await emitEvent(env, "review_requested", { entity: payload.orderNo, payload: { orderNo: payload.orderNo } });
+      await enqueue(env, automation, eventId, payload);
+    });
+  } catch (e) { console.error("review requests failed", e); }
 
   // Drain the outbox (due runs).
   const due = (await env.DB.prepare(

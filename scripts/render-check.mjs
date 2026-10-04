@@ -31,6 +31,8 @@ const targets = [
   { path: "/new-arrivals", needsRoot: true },
   { path: "/deals", needsRoot: true },
   { path: "/best-sellers", needsRoot: true },
+  { path: "/top-rated", needsRoot: true },
+  { path: "/shop/categories", needsRoot: true },
   { path: "/gift-sets", needsRoot: true },
   { path: "/locations", needsRoot: true },
   { path: "/wishlist", needsRoot: true },

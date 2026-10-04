@@ -8,6 +8,7 @@ import { Sales, Rewards, Notifications, Inquiries, SettingsPage } from "./pages-
 import { TeamPage, AccountPage } from "./team.jsx";
 import { IntegrationsPage } from "./integrations.jsx";
 import { GoLivePage } from "./golive.jsx";
+import { ProductReviewsPage } from "./product-reviews.jsx";
 import { HomePageAdmin } from "./home-page.jsx";
 import { InsightsPage } from "./insights.jsx";
 import { catTree, catPath } from "../lib/categories.js";
@@ -54,7 +55,8 @@ const PAGES = [
   { id: "daily-deals", label: "Daily Deals", title: "Daily deals & countdown" },
   { id: "blog", label: "Blog", title: "The blog" },
   { id: "pages", label: "Pages", title: "Information & legal pages" },
-  { id: "reviews", label: "Reviews", title: "Reviews & testimonials" },
+  { id: "product-reviews", label: "Product reviews", title: "Product ratings & reviews" },
+  { id: "reviews", label: "Testimonials", title: "Reviews & testimonials" },
   { id: "sales", label: "Sales & Promos", title: "Sales & promos" },
   { id: "rewards", label: "Rewards", title: "Reward codes" },
   { id: "notif", label: "Notifications", title: "Notifications & pop-ups" },
@@ -394,6 +396,7 @@ export default function App() {
         {activePage === "home" && <HomePageAdmin ctx={ctx} />}
         {activePage === "insights" && <InsightsPage ctx={ctx} />}
         {activePage === "reviews" && <TestimonialsPage ctx={ctx} />}
+        {activePage === "product-reviews" && <ProductReviewsPage ctx={ctx} />}
         {activePage === "sales" && <Sales ctx={ctx} />}
         {activePage === "rewards" && <Rewards ctx={ctx} />}
         {activePage === "notif" && <Notifications ctx={ctx} />}

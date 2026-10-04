@@ -38,7 +38,7 @@ const SOURCE_LABEL = {
   manual: "Products I choose, by hand",
   none: "No products — just the copy and a button",
 };
-const SEGMENTS = ["best-sellers", "new-arrivals", "deals", "gift-sets"];
+const SEGMENTS = ["best-sellers", "top-rated", "new-arrivals", "deals", "gift-sets"];
 
 export function HomePageAdmin({ ctx }) {
   const [blocks, setBlocks] = useState(null);

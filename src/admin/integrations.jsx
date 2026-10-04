@@ -663,6 +663,9 @@ function ErpPanel({ erp, ctx, reload }) {
   );
 }
 
+// "4320" minutes reads as "3 days" — the delay as the house thinks of it.
+const delayLabel = (m) => (m % 1440 === 0 ? `${m / 1440} ${m === 1440 ? "day" : "days"}` : m % 60 === 0 ? `${m / 60} ${m === 60 ? "hour" : "hours"}` : `${m} min`);
+
 export function IntegrationsPage({ ctx }) {
   const [autos, setAutos] = useState([]);
   const [runStats, setRunStats] = useState([]);
@@ -729,7 +732,7 @@ export function IntegrationsPage({ ctx }) {
             <React.Fragment key={a.id}>
               <div style={{ padding: "13px 14px 13px 22px", borderTop: "1px solid var(--border-hairline)" }}>
                 <div style={{ color: "var(--text-strong)", fontWeight: 500 }}>{a.name}</div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{a.action}{a.delay_minutes ? ` · +${a.delay_minutes}m` : ""}</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{a.action}{a.delay_minutes ? ` · after ${delayLabel(a.delay_minutes)}` : ""}</div>
               </div>
               <div style={{ padding: "13px 14px", borderTop: "1px solid var(--border-hairline)", color: "var(--text-muted)", display: "flex", alignItems: "center" }}>{a.trigger}</div>
               <div style={{ padding: "13px 14px", borderTop: "1px solid var(--border-hairline)", color: "var(--text-body)", display: "flex", alignItems: "center" }}>{runCount(a.id)}</div>

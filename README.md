@@ -174,9 +174,11 @@ is `4084 0840 8408 4081`, any future expiry, any CVV, OTP `123456`.
 
 Under 860px wide the storefront switches to a shopping-first layout, built from the "Majestic Roobee Mobile" design (`src/storefront/mobile-*.jsx`):
 
-- **Chrome** — a slim header (menu or back arrow, logo, search, account), a row of chips for the delivery city, the currency and the Perfume Studio, and a **tab bar** under the thumb: Home, Shop, Deals, Saved, Cart.
-- **Sheets instead of hover menus** — the menu drawer, full-screen search (recent searches and live results), city & currency, "choose a size" for multi-size cards, "added to your cart", filters and sort, and a chat sheet (WhatsApp, call, message us here, book, track).
-- **Pages** — the home page draws the same home blocks as a desktop, as sideways rails; `/shop/categories` is the category index; the listing is a two-column grid with a sticky Filter / Sort bar; the product page has a swipe gallery and a pinned "Add to cart"; `/cart` is a page with the promo box and free-delivery bar; checkout is three numbered sections with the pay button pinned to the bottom.
+- **Chrome** — a slim header carrying everything that changes the whole shop: menu or back arrow, logo, search, the **₦ / $ currency** switch, the Perfume Studio's **Book** button and the account. Under the thumb, a **tab bar**: Home, Shop, Deals, Saved, Cart. Nothing else sits between the header and the page.
+- **Shopping location** — asked once a visit as a sheet ("Where should we deliver?", the last city pre-selected so a returning shopper taps once), never over checkout, a receipt, a review page or a recovery link. After that it lives on a **floating pin** above the chat button, which shows the city for a moment when a page opens and then folds away.
+- **Sheets instead of hover menus** — the menu drawer, full-screen search (recent searches and live results), the shopping location, "choose a size" for multi-size cards, "added to your cart", filters and sort, and a chat sheet (WhatsApp, call, message us here, book, track). On a phone **every sheet is a history entry**: the phone's back gesture closes it, and search also has a back arrow and "Close".
+- **Pages** — the home page draws the same home blocks as a desktop, as sideways rails, minus the three promo tiles (the tab bar and the Shop tab already do their job); `/shop/categories` is the Shop tab — the shelves as chips, then every category as a picture box with its full name and count, and "See all" to the whole catalogue; the listing is a two-column grid with a sticky Filter / Sort bar; the product page has a swipe gallery, its stars and reviews, and a pinned "Add to cart"; `/cart` is a page with the promo box and free-delivery bar; checkout is three numbered sections with the pay button pinned to the bottom.
+- **Rhythm** — a 20px gutter and 44px between sections; product cards say a product's availability only when it is news (low stock, another city, sold out), since the grid already shows what is on the shelf in the shopper's city.
 
 Everything is drawn from the same data and rules as the desktop — `ctx.card()` for prices and availability, `useShopList()` (`src/storefront/shop-list.js`) for what the grid contains, and the server for delivery and payment — so the two layouts can't disagree. Desktop is unchanged.
 
@@ -188,13 +190,14 @@ is a real, linkable, indexable URL rather than a filter the browser holds:
 `/new-arrivals`, `/deals`, `/best-sellers`, `/gift-sets`, `/brand/<name>`,
 `/shop?category=<id>`, and any of those combined (`/deals?category=mist`).
 
-Three of the four shelves are **computed, not curated** (`worker/merch.js`), so
+Four of the five shelves are **computed, not curated** (`worker/merch.js`), so
 nobody has to keep a list up to date:
 
 | Shelf | What it reads | Admin's hand on it |
 | --- | --- | --- |
 | New arrivals | Products listed inside the last *n* days (Settings, default 45), newest first | "Pin to New arrivals" on the product |
 | Best sellers | Units sold on **paid, uncancelled** orders over the last *n* days (Settings, default 90) | "Pin to Best sellers" on the product |
+| Top rated | Buyers' published star ratings, by damped average (see *Ratings and reviews*) | None — it is the buyers' |
 | Gift sets | Every category grouped as **Gift & sets** in Admin → Categories | The grouping itself |
 | Deals | A deal that is inside its window, plus anything priced below its own compare-at price | Admin → Deals |
 
@@ -212,6 +215,46 @@ cascading — move them, or hide it.
 **Deals vs promo codes** — a promo code is something the shopper *types*; a deal
 is something they *see*. A deal names its products, carries a badge and runs
 between two dates, so it leaves the storefront by itself when the window closes.
+
+## Ratings and reviews
+
+Stars come only from people who bought the product, collected the way the big
+marketplaces do it (`worker/reviews.js`):
+
+1. An order is marked **Delivered** or **Collected** → one review request is
+   scheduled for it, due after the `review_request` automation's delay (3 days).
+   An order nobody marks delivered is asked a week after it was paid for (only
+   orders from the last 45 days, at most 25 requests a cron run).
+2. The cron sends **"How are you loving your order?"** through the automation
+   outbox — written in Admin → Integrations → Automations, sent in the
+   letterhead — ending in a **Rate your order** button to `/review/<token>`.
+3. That page (no sign-in; the 32-character token is the only key and opens only
+   that order) lists every product in the order with five big stars, quick
+   chips ("Smells amazing", "Long-lasting", "Perfect gift"…) and an optional
+   line. Re-opening the link edits the reviews rather than adding more.
+4. Published reviews become `{ avg, count }` on each product in `/api/store`:
+   stars on every card, a summary with 5-to-1 bars and the reviews on the
+   product page, `AggregateRating` in the product's JSON-LD, and the **Top
+   rated** shelf (`/top-rated`), ranked by a damped average so one five-star
+   review can't outrank forty at 4.8. It is a claim shelf — never padded — so it
+   stays hidden until the first reviews arrive.
+
+Admin → **Product reviews** shows the request funnel (sent, opened, reviewed)
+and every review; the house can **hide** one or **reply** publicly, never edit
+the stars or the words. A reviewer is shown by first name and city only.
+
+**The emails need the shop's address.** Their button links back to the shop,
+and the cron has no request to read an address from — so until *The shop's web
+address* is set in Admin → Settings (or `SITE_URL` on the Worker), requests wait
+unsent and the Product reviews screen says so.
+
+```
+GET  /api/products/:id/reviews        → summary + published reviews (paged)
+GET  /api/reviews/request/:token      → the order's products, for the review page
+POST /api/reviews/request/:token      { reviews: [{ productId, rating, body, tags }] }
+GET  /api/admin/product-reviews       → reviews, totals, request funnel
+PATCH /api/admin/product-reviews/:id  { status: published|hidden, reply }
+```
 
 ## Reward codes
 

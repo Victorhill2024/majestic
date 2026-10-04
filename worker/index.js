@@ -62,6 +62,7 @@ app.get("/robots.txt", (c) => {
     "Disallow: /admin",
     "Disallow: /checkout",
     "Disallow: /confirm",
+    "Disallow: /review/",
     "Disallow: /api/",
     `Sitemap: ${origin}/sitemap.xml`,
     "",
@@ -74,7 +75,7 @@ app.get("/sitemap.xml", async (c) => {
   // Every page the header and footer link to is a real, indexable page of its
   // own. Category pages are listed from the live tree below.
   const staticUrls = [
-    "/", "/shop", "/new-arrivals", "/best-sellers", "/deals", "/gift-sets",
+    "/", "/shop", "/new-arrivals", "/best-sellers", "/top-rated", "/deals", "/gift-sets",
     "/locations", "/reviews", "/blog", "/about", "/faq", "/track", "/contact",
   ];
   // The Perfume Studio's booking page is only a page while the studio is

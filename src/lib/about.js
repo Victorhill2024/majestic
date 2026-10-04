@@ -94,3 +94,7 @@ export function aboutContent(settings = {}) {
     seoDesc: text(s.aboutSeoDesc, ABOUT_DEFAULTS.seoDesc),
   };
 }
+
+// What the home page's founder block is called when the house hasn't given it
+// a heading of its own — on a phone and a desktop alike.
+export const STORY_HEADING = "Message from our Founder";
